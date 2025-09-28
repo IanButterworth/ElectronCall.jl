@@ -1,0 +1,7 @@
+name = "docs"
+uuid = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+version = "0.1.0"
+
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ElectronCall = "8ddd578f-0c94-4c64-8c65-f083f291b266"
