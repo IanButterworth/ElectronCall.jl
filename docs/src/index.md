@@ -10,7 +10,7 @@ using ElectronCall
 # Create a secure application
 app = Application()
 
-# Create a window  
+# Create a window
 win = Window(app, "https://example.com")
 
 # Execute JavaScript securely
@@ -23,7 +23,7 @@ close(app)
 ## Key Features
 
 - **Security First**: Context isolation, sandboxing, and secure defaults
-- **Modern Architecture**: Async-first with structured error handling  
+- **Modern Architecture**: Async-first with structured error handling
 - **Developer Friendly**: Rich debugging and comprehensive testing
 - **Migration Ready**: Compatible with Electron.jl patterns
 

@@ -1,0 +1,30 @@
+# Dependabot configuration for keeping GitHub Actions up to date
+# See: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Etc/UTC"
+    # Group all GitHub Actions updates into a single PR to reduce noise
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    # Limit to 5 open PRs at a time
+    open-pull-requests-limit: 5
+    # Add reviewers (optional - customize as needed)
+    # reviewers:
+    #   - "IanButterworth"
+    # Add labels to make PRs easier to identify
+    labels:
+      - "dependencies"
+      - "github-actions"
+    # Auto-approve and merge patch updates for trusted actions
+    # (This is optional and can be removed if you prefer manual review)
+    # enable-beta-ecosystems: true
