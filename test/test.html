@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ElectronCall Test Page</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+        }
+        .security-info {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #output {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ElectronCall Test Page</h1>
+        
+        <div class="security-info">
+            <h3>🔐 Security Status</h3>
+            <p id="security-status">Loading security information...</p>
+        </div>
+        
+        <div class="test-section">
+            <h3>🧪 Communication Tests</h3>
+            <button onclick="testBasicCommunication()">Test Basic Communication</button>
+            <button onclick="testErrorHandling()">Test Error Handling</button>
+            <button onclick="testMessageToJulia()">Send Message to Julia</button>
+            <button onclick="clearOutput()">Clear Output</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 Output</h3>
+            <div id="output">Ready for testing...\n</div>
+        </div>
+    </div>
+
+    <script>
+        // Log function for output
+        function log(message) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.textContent += `[${timestamp}] ${message}\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Display security information
+        function displaySecurityInfo() {
+            const statusElement = document.getElementById('security-status');
+            
+            if (typeof window.electronAPI !== 'undefined') {
+                const info = window.electronAPI.getEnvironmentInfo();
+                statusElement.innerHTML = `
+                    <strong>✅ Secure Context Active</strong><br>
+                    Context Isolation: ${info.contextIsolated ? '✅ Enabled' : '❌ Disabled'}<br>
+                    Sandbox: ${info.sandbox ? '✅ Enabled' : '❌ Disabled'}<br>
+                    Platform: ${info.platform} (${info.arch})<br>
+                    Electron: ${info.versions.electron}<br>
+                    Node.js: ${info.versions.node}
+                `;
+                log('Security info loaded - using secure context bridge');
+            } else if (typeof window.sendMessageToJulia !== 'undefined') {
+                statusElement.innerHTML = `
+                    <strong>⚠️ Legacy Mode</strong><br>
+                    Context Isolation: ❌ Disabled<br>
+                    Node Integration: ✅ Enabled<br>
+                    <em>This mode has security vulnerabilities</em>
+                `;
+                log('Legacy mode detected - direct Node.js access available');
+            } else {
+                statusElement.innerHTML = `
+                    <strong>❌ No Communication Available</strong><br>
+                    Neither secure nor legacy communication methods found.
+                `;
+                log('ERROR: No communication methods available');
+            }
+        }
+
+        // Test basic communication
+        function testBasicCommunication() {
+            log('Testing basic JavaScript execution...');
+            
+            try {
+                const result = Math.PI * 2;
+                log(`Math calculation result: ${result}`);
+                
+                const userAgent = navigator.userAgent;
+                log(`User Agent: ${userAgent}`);
+                
+                const title = document.title;
+                log(`Document title: ${title}`);
+                
+                log('✅ Basic communication test passed');
+            } catch (error) {
+                log(`❌ Basic communication test failed: ${error.message}`);
+            }
+        }
+
+        // Test error handling
+        function testErrorHandling() {
+            log('Testing error handling...');
+            
+            try {
+                // This should cause an error
+                nonExistentFunction();
+            } catch (error) {
+                log(`✅ Error caught successfully: ${error.message}`);
+                log(`Error type: ${error.constructor.name}`);
+            }
+        }
+
+        // Test message to Julia
+        function testMessageToJulia() {
+            log('Testing message to Julia...');
+            
+            const message = {
+                type: 'test',
+                timestamp: new Date().toISOString(),
+                data: 'Hello from ElectronCall test page!',
+                randomNumber: Math.random()
+            };
+            
+            if (typeof window.electronAPI !== 'undefined') {
+                window.electronAPI.sendMessageToJulia(message);
+                log('✅ Message sent via secure API');
+            } else if (typeof window.sendMessageToJulia !== 'undefined') {
+                window.sendMessageToJulia(message);
+                log('⚠️ Message sent via legacy API');
+            } else {
+                log('❌ No message API available');
+                return;
+            }
+            
+            log(`Message content: ${JSON.stringify(message, null, 2)}`);
+        }
+
+        // Clear output
+        function clearOutput() {
+            document.getElementById('output').textContent = 'Output cleared...\n';
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            log('ElectronCall test page loaded');
+            displaySecurityInfo();
+            
+            // Test if we can detect security features
+            if (window.__electronCallDebug) {
+                log(`ElectronCall debug info: ${JSON.stringify(window.__electronCallDebug)}`);
+            } else {
+                log('No ElectronCall debug info available');
+            }
+        });
+
+        // Handle any unhandled errors
+        window.addEventListener('error', function(event) {
+            log(`❌ Unhandled error: ${event.error?.message || event.message}`);
+        });
+
+        // Handle unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            log(`❌ Unhandled promise rejection: ${event.reason}`);
+        });
+    </script>
+</body>
+</html>
