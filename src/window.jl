@@ -236,5 +236,3 @@ function apply_security_defaults!(options::Dict, security_config::SecurityConfig
         )
     end
 end
-
-

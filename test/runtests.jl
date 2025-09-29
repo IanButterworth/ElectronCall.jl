@@ -768,7 +768,7 @@ end
     @testset "Internal Callback Functions" begin
         cleanup_all_applications()
 
-        app = Application(name="CallbackTestApp", security=test_security_config())
+        app = Application(name = "CallbackTestApp", security = test_security_config())
         win = Window(app)
 
         # Test on_message callback function
@@ -776,18 +776,18 @@ end
         callback_executed = Ref{Bool}(false)
 
         # Define a callback that captures messages
-        test_callback = function(msg)
+        test_callback = function (msg)
             message_received[] = msg
             callback_executed[] = true
             return "callback_response"
         end
 
         # Test on_message function with sync callback
-        ElectronCall.on_message(test_callback, win, async=false)
+        ElectronCall.on_message(test_callback, win, async = false)
         @test true  # If we get here, on_message executed without error
 
         # Test on_message function with async callback
-        ElectronCall.on_message(test_callback, win, async=true)
+        ElectronCall.on_message(test_callback, win, async = true)
         @test true  # If we get here, on_message executed without error
 
         # Test handle_window_message internal function
@@ -831,7 +831,7 @@ end
         cleanup_all_applications()
 
         # Test @async_app macro - test that it executes and returns the block result
-        result_value = @async_app "TestMacroApp" security=test_security_config() begin
+        result_value = @async_app "TestMacroApp" security = test_security_config() begin
             # Simple computation within the macro
             21 * 2
         end
@@ -875,12 +875,12 @@ end
         cleanup_all_applications()
 
         @info "Testing concurrent JavaScript execution with $(Threads.nthreads()) threads..."
-        
+
         # Verify we have multiple threads for meaningful concurrency testing
         if Threads.nthreads() == 1
             @warn "Only 1 thread available - concurrency test may not detect race conditions effectively"
         end
-        
+
         app = Application(name = "ConcurrencyTestApp", security = test_security_config())
         win = Window(app)
 
@@ -889,20 +889,20 @@ end
         n_tasks = 10
         n_calls_per_task = 5
         results = Channel{Any}(n_tasks * n_calls_per_task)
-        
+
         @info "Starting $n_tasks concurrent tasks with $n_calls_per_task calls each"
-        
+
         tasks = []
-        for task_id in 1:n_tasks
+        for task_id = 1:n_tasks
             task = Threads.@spawn begin
                 task_results = []
-                for call_id in 1:n_calls_per_task
+                for call_id = 1:n_calls_per_task
                     try
                         # Each task runs a unique calculation to verify correct responses
                         unique_val = task_id * 1000 + call_id
                         result = run(win, "$(unique_val) + 1")
                         expected = unique_val + 1
-                        
+
                         if result == expected
                             push!(task_results, :success)
                         else
@@ -916,18 +916,18 @@ end
             end
             push!(tasks, task)
         end
-        
+
         # Wait for all tasks to complete
         for task in tasks
             wait(task)
         end
-        
+
         # Collect and verify results
         all_success = true
         error_count = 0
         mismatch_count = 0
-        
-        for _ in 1:n_tasks
+
+        for _ = 1:n_tasks
             task_id, task_results = take!(results)
             for result in task_results
                 if result == :success
@@ -943,49 +943,52 @@ end
                 end
             end
         end
-        
+
         @info "Concurrency test completed: errors=$error_count, mismatches=$mismatch_count"
-        
+
         # The test passes if we have no mismatches (which would indicate race conditions)
         # A few errors might be acceptable due to timing, but mismatches indicate the 
         # critical bug where tasks read each other's responses
         @test mismatch_count == 0
-        
+
         # Also test concurrent application-level execution
         @info "Testing concurrent application-level JavaScript execution..."
-        
+
         app_results = Channel{Any}(n_tasks)
         app_tasks = []
-        
-        for task_id in 1:n_tasks
+
+        for task_id = 1:n_tasks
             task = Threads.@spawn begin
                 try
                     # Each task runs a unique calculation at the application level
                     unique_val = task_id * 10000
                     result = run(app, "$(unique_val) * 2")
                     expected = unique_val * 2
-                    put!(app_results, result == expected ? :success : (:mismatch, expected, result))
+                    put!(
+                        app_results,
+                        result == expected ? :success : (:mismatch, expected, result),
+                    )
                 catch e
                     put!(app_results, (:error, e))
                 end
             end
             push!(app_tasks, task)
         end
-        
+
         for task in app_tasks
             wait(task)
         end
-        
+
         app_mismatch_count = 0
-        for _ in 1:n_tasks
+        for _ = 1:n_tasks
             result = take!(app_results)
             if result isa Tuple && result[1] == :mismatch
                 app_mismatch_count += 1
             end
         end
-        
+
         @test app_mismatch_count == 0
-        
+
         close(win)
         close(app)
         cleanup_all_applications()

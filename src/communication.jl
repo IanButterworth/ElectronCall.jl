@@ -265,22 +265,44 @@ end
 
 # High-performance request-response function optimized for JavaScript execution
 # Uses manual JSON construction to eliminate JSON3.write() overhead
-function req_response_js(app::Application, cmd::String, target::String, winid::Union{Int64, Nothing}, code::String)
+function req_response_js(
+    app::Application,
+    cmd::String,
+    target::String,
+    winid::Union{Int64,Nothing},
+    code::String,
+)
     app.exists || throw(ApplicationError("Cannot communicate with closed application"))
 
     lock(app.comm_lock) do
         connection = app.connection
-        
+
         # Optimization: Manual JSON construction to avoid full serialization overhead
         # This eliminates the expensive JSON3.write() call seen in profiling
         if target == "app"
             # Pre-built template for app commands
-            json_cmd = string("{\"cmd\":\"", cmd, "\",\"target\":\"", target, "\",\"code\":\"", 
-                            escape_json_string(code), "\"}")
+            json_cmd = string(
+                "{\"cmd\":\"",
+                cmd,
+                "\",\"target\":\"",
+                target,
+                "\",\"code\":\"",
+                escape_json_string(code),
+                "\"}",
+            )
         else
             # Pre-built template for window commands  
-            json_cmd = string("{\"cmd\":\"", cmd, "\",\"target\":\"", target, "\",\"winid\":",
-                            winid, ",\"code\":\"", escape_json_string(code), "\"}")
+            json_cmd = string(
+                "{\"cmd\":\"",
+                cmd,
+                "\",\"target\":\"",
+                target,
+                "\",\"winid\":",
+                winid,
+                ",\"code\":\"",
+                escape_json_string(code),
+                "\"}",
+            )
         end
 
         try
@@ -338,15 +360,20 @@ end
 # Fast JSON string escaping for common cases
 function escape_json_string(s::String)
     # Optimization: Handle common cases without full JSON escaping
-    if !contains(s, '"') && !contains(s, '\\') && !contains(s, '\n') && !contains(s, '\r') && !contains(s, '\t')
+    if !contains(s, '"') &&
+       !contains(s, '\\') &&
+       !contains(s, '\n') &&
+       !contains(s, '\r') &&
+       !contains(s, '\t')
         return s  # No escaping needed for simple strings
     else
         # Fall back to proper JSON escaping for complex strings
-        return replace(replace(replace(replace(replace(s, 
-            "\\" => "\\\\"), 
-            "\"" => "\\\""), 
-            "\n" => "\\n"), 
-            "\r" => "\\r"), 
-            "\t" => "\\t")
+        return replace(
+            replace(
+                replace(replace(replace(s, "\\" => "\\\\"), "\"" => "\\\""), "\n" => "\\n"),
+                "\r" => "\\r",
+            ),
+            "\t" => "\\t",
+        )
     end
 end
