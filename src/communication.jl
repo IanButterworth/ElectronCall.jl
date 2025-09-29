@@ -34,8 +34,8 @@ julia> title = run(win, "document.title")
 function Base.run(app::Application, code::AbstractString)
     app.exists || throw(ApplicationError("Cannot execute JavaScript in closed application"))
 
-    message = OptDict("cmd" => "runcode", "target" => "app", "code" => String(code))
-    retval = req_response(app, message)
+    # Optimization: Use pre-serialized command template to reduce JSON overhead
+    retval = req_response_js(app, "runcode", "app", nothing, code)
 
     if haskey(retval, "error")
         throw(JSExecutionError(retval["error"], context = "main"))
@@ -47,13 +47,8 @@ end
 function Base.run(win::Window, code::AbstractString)
     isopen(win) || throw(WindowClosedError(win.id, "run"))
 
-    message = OptDict(
-        "cmd" => "runcode",
-        "target" => "window",
-        "winid" => win.id,
-        "code" => String(code),
-    )
-    retval = req_response(win.app, message)
+    # Optimization: Use pre-serialized command template to reduce JSON overhead
+    retval = req_response_js(win.app, "runcode", "window", win.id, code)
 
     @assert haskey(retval, "status") "Invalid response format from Electron"
 
@@ -62,11 +57,20 @@ function Base.run(win::Window, code::AbstractString)
     elseif retval["status"] == "error"
         error_info = retval["error"]
 
-        # Extract detailed error information if available
-        message = get(error_info, "message", "Unknown JavaScript error")
-        stack = get(error_info, "stack", nothing)
-        line = get(error_info, "line", nothing)
-        column = get(error_info, "column", nothing)
+        # Handle both string and dict error formats
+        if isa(error_info, String)
+            # Simple string error (optimized format)
+            message = error_info
+            stack = nothing
+            line = nothing
+            column = nothing
+        else
+            # Detailed error object format
+            message = get(error_info, "message", "Unknown JavaScript error")
+            stack = get(error_info, "stack", nothing)
+            line = get(error_info, "line", nothing)
+            column = get(error_info, "column", nothing)
+        end
 
         throw(
             JSExecutionError(
@@ -256,5 +260,93 @@ function on_message(callback::Function, win::Window; async::Bool = true)
                 end
             end
         end
+    end
+end
+
+# High-performance request-response function optimized for JavaScript execution
+# Uses manual JSON construction to eliminate JSON3.write() overhead
+function req_response_js(app::Application, cmd::String, target::String, winid::Union{Int64, Nothing}, code::String)
+    app.exists || throw(ApplicationError("Cannot communicate with closed application"))
+
+    lock(app.comm_lock) do
+        connection = app.connection
+        
+        # Optimization: Manual JSON construction to avoid full serialization overhead
+        # This eliminates the expensive JSON3.write() call seen in profiling
+        if target == "app"
+            # Pre-built template for app commands
+            json_cmd = string("{\"cmd\":\"", cmd, "\",\"target\":\"", target, "\",\"code\":\"", 
+                            escape_json_string(code), "\"}")
+        else
+            # Pre-built template for window commands  
+            json_cmd = string("{\"cmd\":\"", cmd, "\",\"target\":\"", target, "\",\"winid\":",
+                            winid, ",\"code\":\"", escape_json_string(code), "\"}")
+        end
+
+        try
+            # Optimization: Use write instead of println to reduce buffer flushes
+            write(connection, json_cmd, '\n')
+            flush(connection)  # Explicit flush for better control  
+            response_line = readline(connection)
+
+            if isempty(response_line)
+                throw(CommunicationError("Empty response from Electron process"))
+            end
+
+            return JSON3.read(response_line)
+        catch e
+            if e isa Base.IOError
+                app.exists = false
+                throw(CommunicationError("Lost connection to Electron process", e))
+            else
+                rethrow(e)
+            end
+        end
+    end
+end
+
+# General request-response function for non-JavaScript commands
+function req_response(app::Application, cmd::Dict)
+    app.exists || throw(ApplicationError("Cannot communicate with closed application"))
+
+    lock(app.comm_lock) do
+        connection = app.connection
+        json_cmd = JSON3.write(cmd)
+
+        try
+            # Optimization: Use write instead of println to reduce buffer flushes
+            write(connection, json_cmd, '\n')
+            flush(connection)  # Explicit flush for better control
+            response_line = readline(connection)
+
+            if isempty(response_line)
+                throw(CommunicationError("Empty response from Electron process"))
+            end
+
+            return JSON3.read(response_line)
+        catch e
+            if e isa Base.IOError
+                app.exists = false
+                throw(CommunicationError("Lost connection to Electron process", e))
+            else
+                rethrow(e)
+            end
+        end
+    end
+end
+
+# Fast JSON string escaping for common cases
+function escape_json_string(s::String)
+    # Optimization: Handle common cases without full JSON escaping
+    if !contains(s, '"') && !contains(s, '\\') && !contains(s, '\n') && !contains(s, '\r') && !contains(s, '\t')
+        return s  # No escaping needed for simple strings
+    else
+        # Fall back to proper JSON escaping for complex strings
+        return replace(replace(replace(replace(replace(s, 
+            "\\" => "\\\\"), 
+            "\"" => "\\\""), 
+            "\n" => "\\n"), 
+            "\r" => "\\r"), 
+            "\t" => "\\t")
     end
 end

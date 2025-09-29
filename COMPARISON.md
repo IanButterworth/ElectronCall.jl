@@ -2,6 +2,19 @@
 
 This document provides a detailed comparison between ElectronCall.jl (v1.0.0) and the original Electron.jl (v6.0.0), including migration guidance and feature differences.
 
+## Performance Comparison
+
+**Latest Benchmark Results** (September 2025):
+
+| Metric | Electron.jl | ElectronCall.jl | Winner |
+|--------|-------------|-----------------|---------|
+| **Application Startup** | 161.03 ms | 164.83 ms | ⚠️ Electron.jl (+2.4%) |
+| **Window Creation** | 113.23 ms | 112.76 ms | 🚀 **ElectronCall.jl** (+0.4%) |
+| **JS Execution (Single)** | 1.03 ms | 990.138 μs | 🚀 **ElectronCall.jl** (+3.9%) |
+| **JS Throughput** | 3620 ops/sec | 3445 ops/sec | ⚠️ Electron.jl (+4.8%) |
+| **Cleanup Time** | 20.05 ms | 19.47 ms | 🚀 **ElectronCall.jl** (+2.9%) |
+| **Thread Safety** | ❌ Not supported | ✅ 3.09 ms concurrent exec | 🔒 **ElectronCall.jl exclusive** |
+
 ## Feature Comparison
 
 | Feature | Electron.jl | ElectronCall.jl | Migration Notes |

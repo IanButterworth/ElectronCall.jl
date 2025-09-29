@@ -112,7 +112,7 @@ function Application(;
         main_pipe_name,
         sysnotify_pipe_name,
         secure_cookie_encoded,
-        base64encode(JSON.json(security)),  # Pass security config to main.js
+        base64encode(JSON3.write(security)),  # Pass security config to main.js
     ]
 
     # Add sandbox control - default is enabled (opposite of original Electron.jl)
@@ -234,7 +234,7 @@ function handle_notifications(app::Application, sysnotify_sock::IO)
                 line_json = readline(sysnotify_sock)
                 isempty(line_json) && break  # EOF
 
-                cmd_parsed = JSON.parse(line_json)
+                cmd_parsed = JSON3.read(line_json)
 
                 if cmd_parsed["cmd"] == "windowclosed"
                     handle_window_closed(app, cmd_parsed["winid"])

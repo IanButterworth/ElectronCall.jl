@@ -237,32 +237,4 @@ function apply_security_defaults!(options::Dict, security_config::SecurityConfig
     end
 end
 
-function req_response(app::Application, cmd::Dict)
-    app.exists || throw(ApplicationError("Cannot communicate with closed application"))
 
-    # Use lock to prevent race conditions when multiple tasks call req_response concurrently
-    # This fixes the issue where Task A sends command, Task B sends command, 
-    # but Task A reads Task B's response (similar to Electron.jl issue #38)
-    lock(app.comm_lock) do
-        connection = app.connection
-        json_cmd = JSON.json(cmd)
-
-        try
-            println(connection, json_cmd)
-            response_line = readline(connection)
-
-            if isempty(response_line)
-                throw(CommunicationError("Empty response from Electron process"))
-            end
-
-            return JSON.parse(response_line)
-        catch e
-            if e isa Base.IOError
-                app.exists = false
-                throw(CommunicationError("Lost connection to Electron process", e))
-            else
-                rethrow(e)
-            end
-        end
-    end
-end
