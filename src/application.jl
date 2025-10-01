@@ -90,7 +90,8 @@ function Application(;
     # Validate security configuration
     validate_security_config(security)
 
-    electron_path = get_electron_binary_cmd()
+    # Get the Electron binary path from Electron_jll
+    electron_path = Electron_jll.electron_path
 
     # Generate unique identifiers for named pipes
     id = replace(string(uuid1()), "-" => "")

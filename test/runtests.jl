@@ -511,27 +511,22 @@ end
     end
 
     @testset "Artifacts and Binary Detection" begin
-        # Test get_electron_binary_cmd returns appropriate binary path
-        binary_cmd = ElectronCall.get_electron_binary_cmd()
-        @test binary_cmd isa String
-        @test length(binary_cmd) > 0
+        # Test Electron_jll.electron_path returns appropriate binary path
+        binary_path = ElectronCall.Electron_jll.electron_path
+        @test binary_path isa String
+        @test length(binary_path) > 0
 
         # Platform-specific path validation
         if Sys.isapple()
-            # On macOS, should contain "Julia" (the app name)
-            @test occursin("Julia", binary_cmd)
+            # On macOS, should contain "electron" in the path
+            @test occursin("electron", binary_path)
         elseif Sys.iswindows()
             # On Windows, should end with .exe
-            @test occursin("electron.exe", binary_cmd) || binary_cmd == "electron"
+            @test occursin("electron.exe", binary_path) || occursin("electron", binary_path)
         else # Linux/Unix
             # On Linux, should contain "electron"
-            @test occursin("electron", binary_cmd)
+            @test occursin("electron", binary_path)
         end
-
-        # Test conditional_electron_load error path
-        # This function handles artifact loading gracefully
-        result = ElectronCall.conditional_electron_load()
-        @test result !== nothing || result === nothing  # Either works or fails gracefully
 
         # Test prep_test_env function (it's safe to call multiple times)
         ElectronCall.prep_test_env()
@@ -735,17 +730,15 @@ end
         # We can't easily mock conditional_electron_load, but we can test the logic
 
         # Test that binary command is reasonable on this platform
-        cmd = ElectronCall.get_electron_binary_cmd()
-        if Sys.isapple()
-            @test occursin("Julia", cmd) || cmd == "electron"
-        else
-            @test occursin("electron", cmd)
-        end
+        binary_path = ElectronCall.Electron_jll.electron_path
+        @test binary_path isa String
+        @test !isempty(binary_path)
 
-        # Test platform-specific logic by checking the source behavior
-        # The function should handle all platforms gracefully
-        @test isa(cmd, String)
-        @test !isempty(cmd)
+        if Sys.isapple()
+            @test occursin("electron", binary_path)
+        else
+            @test occursin("electron", binary_path)
+        end
 
         # Cleanup to ensure no applications are left running
         cleanup_all_applications()

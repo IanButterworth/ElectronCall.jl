@@ -1,6 +1,6 @@
 module ElectronCall
 
-using JSON3, URIs, Sockets, Base64, Artifacts, UUIDs
+using JSON3, URIs, Sockets, Base64, Electron_jll, UUIDs
 
 # Core exports - clean, minimal API inspired by Electron.jl
 export Application, Window, URI, windows, applications, msgchannel, load
@@ -13,7 +13,6 @@ export @async_app, @js, @window, @electron_function, SecurityConfig
 export ElectronCallError, JSExecutionError, WindowClosedError, SecurityError
 
 # Include core modules in dependency order
-include("artifacts.jl")
 include("security.jl")
 include("errors.jl")
 
@@ -86,6 +85,19 @@ function default_application(security::SecurityConfig = secure_defaults())
     return _global_default_application[]
 end
 
+"""
+    prep_test_env()
 
+Prepare the environment for testing, particularly in CI environments.
+Sets up virtual display on Linux headless systems.
+"""
+function prep_test_env()
+    if haskey(ENV, "GITHUB_ACTIONS") && ENV["GITHUB_ACTIONS"] == "true"
+        if Sys.islinux()
+            run(Cmd(`Xvfb :99 -screen 0 1024x768x24`), wait = false)
+            ENV["DISPLAY"] = ":99"
+        end
+    end
+end
 
 end # module ElectronCall
