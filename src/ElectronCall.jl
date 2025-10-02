@@ -5,6 +5,7 @@ using JSON3, URIs, Sockets, Base64, Electron_jll, UUIDs
 # Core exports - clean, minimal API inspired by Electron.jl
 export Application, Window, URI, windows, applications, msgchannel, load
 export close, isopen, default_application
+export toggle_devtools, ElectronAPI, get_electron_binary_cmd
 
 # Modern async exports
 export @async_app, @js, @window, @electron_function, SecurityConfig

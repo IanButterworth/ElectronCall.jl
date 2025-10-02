@@ -5,9 +5,14 @@ const net = require('net')
 const os = require('os')
 const readline = require('readline')
 
+console.log('ElectronCall main.js: Script started, initializing...')
+console.log('ElectronCall main.js: Process arguments:', process.argv)
+
 const BrowserWindow = electron.BrowserWindow;
 const app = electron.app;
 const ipcMain = electron.ipcMain;
+
+console.log('ElectronCall main.js: Electron modules loaded successfully')
 
 let sysnotify_connection = null;
 let security_config = null;
@@ -233,13 +238,57 @@ ipcMain.on('msg-for-julia-process', (event, arg) => {
 
 // Application ready handler
 app.on('ready', function () {
-    // Parse command line arguments - adjust indices since argv[0] = electron, argv[1] = main.js
-    const secure_cookie = Buffer.from(process.argv[4], 'base64');
+    console.log('ElectronCall main.js: app.ready event fired')
+
+    // Determine the index of the main script within process arguments
+    const normalizedFilename = path.normalize(__filename);
+    let scriptIndex = process.argv.findIndex(arg => {
+        if (!arg) {
+            return false;
+        }
+        const normalizedArg = path.normalize(arg);
+        return normalizedArg === normalizedFilename;
+    });
+
+    if (scriptIndex === -1) {
+        // Fallback: Electron may pass file:// URLs in some environments
+        scriptIndex = process.argv.findIndex(arg => {
+            if (!arg || !arg.startsWith('file://')) {
+                return false;
+            }
+            try {
+                return path.normalize(url.fileURLToPath(arg)) === normalizedFilename;
+            } catch (error) {
+                return false;
+            }
+        });
+    }
+
+    if (scriptIndex === -1) {
+        console.error('ElectronCall: Unable to locate main.js in process arguments. Arguments were:', process.argv);
+        app.exit(1);
+        return;
+    }
+
+    const argOffset = scriptIndex + 1;
+    const mainPipe = process.argv[argOffset];
+    const sysPipe = process.argv[argOffset + 1];
+    const secureCookieArg = process.argv[argOffset + 2];
+    const securityConfigArg = process.argv[argOffset + 3];
+
+    if (!mainPipe || !sysPipe || !secureCookieArg) {
+        console.error('ElectronCall: Missing required connection parameters after main.js. Arguments were:', process.argv);
+        app.exit(1);
+        return;
+    }
+
+    const secure_cookie = Buffer.from(secureCookieArg, 'base64');
+    console.log('ElectronCall main.js: Parsed secure cookie')
 
     // Parse security configuration if provided
-    if (process.argv[5]) {
+    if (securityConfigArg) {
         try {
-            security_config = JSON.parse(Buffer.from(process.argv[5], 'base64').toString());
+            security_config = JSON.parse(Buffer.from(securityConfigArg, 'base64').toString());
             console.log('ElectronCall: Using security configuration', {
                 contextIsolation: security_config.context_isolation,
                 sandbox: security_config.sandbox,
@@ -252,8 +301,10 @@ app.on('ready', function () {
     }
 
     // Connect to Julia process
-    const connection = secure_connect(process.argv[2], secure_cookie);
-    sysnotify_connection = secure_connect(process.argv[3], secure_cookie);
+    console.log('ElectronCall main.js: Attempting to connect to pipes:', mainPipe, sysPipe)
+    const connection = secure_connect(mainPipe, secure_cookie);
+    sysnotify_connection = secure_connect(sysPipe, secure_cookie);
+    console.log('ElectronCall main.js: Connection attempts initiated')
 
     // Handle sysnotify connection errors silently during cleanup
     sysnotify_connection.on('error', function(error) {

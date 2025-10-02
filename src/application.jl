@@ -107,14 +107,8 @@ function Application(;
     secure_cookie_encoded = base64encode(secure_cookie)
 
     # Build Electron command with security-conscious defaults
-    electron_cmd_args = [
-        electron_path,
-        main_js,
-        main_pipe_name,
-        sysnotify_pipe_name,
-        secure_cookie_encoded,
-        base64encode(JSON3.write(security)),  # Pass security config to main.js
-    ]
+    # Electron flags must come before the main.js file
+    electron_cmd_args = [electron_path]
 
     # Add sandbox control - default is enabled (opposite of original Electron.jl)
     if !security.sandbox
@@ -122,37 +116,175 @@ function Application(;
         @warn "Sandbox disabled - this reduces security. Only disable for development/debugging."
     end
 
-    # Add custom electron arguments
+    # Add flags for better headless/CI compatibility (Linux only)
+    if (haskey(ENV, "GITHUB_ACTIONS") || haskey(ENV, "CI")) && Sys.islinux()
+        # Disable GPU and graphics features for headless environments
+        push!(electron_cmd_args, "--disable-gpu")
+        push!(electron_cmd_args, "--disable-dev-shm-usage")
+        push!(electron_cmd_args, "--disable-software-rasterizer")
+        # Disable system service dependencies that block in CI
+        if security.sandbox  # Only add if not already added above
+            push!(electron_cmd_args, "--no-sandbox")
+        end
+        push!(electron_cmd_args, "--disable-setuid-sandbox")
+        push!(electron_cmd_args, "--disable-gpu-sandbox")
+        # Most critical: Use stub D-Bus clients to prevent blocking on system services
+        push!(electron_cmd_args, "--dbus-stub")
+        # Prevent DBus and system service blocking
+        push!(electron_cmd_args, "--disable-features=MediaRouter,UserAgentClientHint")
+        # Explicitly disable DBus-related features
+        push!(electron_cmd_args, "--no-xshm")
+        # Disable zygote process to avoid DBus initialization
+        push!(electron_cmd_args, "--no-zygote")
+        # Disable background networking that may try to access system services
+        push!(electron_cmd_args, "--disable-background-networking")
+    end
+
+    # Add custom electron arguments (before main.js)
     append!(electron_cmd_args, additional_electron_args)
 
+    # Add main.js and application arguments
+    append!(electron_cmd_args, [
+        main_js,
+        main_pipe_name,
+        sysnotify_pipe_name,
+        secure_cookie_encoded,
+        base64encode(JSON3.write(security)),  # Pass security config to main.js
+    ])
+
     electron_cmd = Cmd(electron_cmd_args)
+
+    # Log command in CI for debugging
+    if haskey(ENV, "GITHUB_ACTIONS") || haskey(ENV, "CI")
+        @info "Electron command" electron_path main_js args=electron_cmd_args[2:end]
+    end
 
     # Clean environment
     new_env = copy(ENV)
     if haskey(new_env, "ELECTRON_RUN_AS_NODE")
         delete!(new_env, "ELECTRON_RUN_AS_NODE")
     end
+    
+    # Disable DBus in Linux CI to prevent blocking on system service queries
+    # Delete these variables entirely rather than setting to empty string
+    if (haskey(ENV, "GITHUB_ACTIONS") || haskey(ENV, "CI")) && Sys.islinux()
+        delete!(new_env, "DBUS_SESSION_BUS_ADDRESS")
+        delete!(new_env, "DBUS_SYSTEM_BUS_ADDRESS")
+        delete!(new_env, "XDG_RUNTIME_DIR")
+    end
 
     # Start Electron process
+    main_accept_event = Base.Event()
+    sysnotify_accept_event = Base.Event()
+    handshake_complete_event = Base.Event()
+    monitor_tasks = Task[]
+
     try
-        proc = open(Cmd(electron_cmd, env = new_env), "w", stdout)
+        @info "Starting Electron process..." name main_pipe_name sysnotify_pipe_name
+        
+        # Redirect both stdout and stderr to Julia's output streams for visibility
+        # This is especially important for console.log output in main.js
+        proc = open(pipeline(Cmd(electron_cmd, env = new_env), stdout=stdout, stderr=stderr), "w")
+
+        # Monitor for hung connections and unexpected process exits
+        push!(monitor_tasks, @async begin
+            try
+                start_time = time()
+                while !isready(main_accept_event)
+                    sleep(5)
+                    elapsed = round(Int, time() - start_time)
+                    running = Base.process_running(proc)
+                    if !running
+                        exited = Base.process_exited(proc)
+                        status = exited ? success(proc) : missing
+                        exit_code = exited ? try
+                                getfield(proc, :exitcode)
+                            catch
+                                nothing
+                            end : nothing
+                        @warn "Electron process no longer running while waiting for main connection, aborting wait" elapsed_seconds = elapsed status exit_code
+                        return
+                    end
+                    @warn "Still waiting for Electron to connect main pipe" elapsed_seconds = elapsed pipe = main_pipe_name pid = getpid(proc)
+                end
+            catch err
+                @debug "Main connection wait monitor encountered an error" exception = err
+            end
+        end)
+
+        push!(monitor_tasks, @async begin
+            try
+                wait(main_accept_event)
+                start_time = time()
+                while !isready(sysnotify_accept_event) && !isready(handshake_complete_event)
+                    sleep(5)
+                    elapsed = round(Int, time() - start_time)
+                    running = Base.process_running(proc)
+                    if !running
+                        exited = Base.process_exited(proc)
+                        status = exited ? success(proc) : missing
+                        exit_code = exited ? try
+                                getfield(proc, :exitcode)
+                            catch
+                                nothing
+                            end : nothing
+                        @warn "Electron process no longer running while waiting for sysnotify connection, aborting wait" elapsed_seconds = elapsed status exit_code
+                        return
+                    end
+                    @warn "Still waiting for Electron to connect sysnotify pipe" elapsed_seconds = elapsed pipe = sysnotify_pipe_name pid = getpid(proc)
+                end
+            catch err
+                @debug "Sysnotify connection wait monitor encountered an error" exception = err
+            end
+        end)
+
+        push!(monitor_tasks, @async begin
+            try
+                wait(proc)
+                exit_success = success(proc)
+                exit_code = try
+                    getfield(proc, :exitcode)
+                catch
+                    nothing
+                end
+                if !isready(handshake_complete_event)
+                    @warn "Electron process exited before completing handshake" exit_success exit_code
+                else
+                    @info "Electron process exited" exit_success exit_code
+                end
+            catch err
+                @debug "Electron process monitor encountered an error" exception = err
+            end
+        end)
+        
+        @info "Electron process started (PID=$(getpid(proc))), waiting for connections..."
 
         # Accept connections with timeout
+        @info "Waiting to accept main connection on $main_pipe_name..."
         sock = accept(server)
+        notify(main_accept_event)
+        @info "Main connection accepted, waiting for sysnotify connection on $sysnotify_pipe_name..."
         sysnotify_sock = accept(sysnotify_server)
+        notify(sysnotify_accept_event)
+        @info "Both connections accepted, authenticating..."
 
         # Authenticate connections
         if read!(sock, zero(secure_cookie)) != secure_cookie
             close.([server, sysnotify_server, sock, sysnotify_sock])
             error("Electron failed to authenticate with proper security token")
         end
+        @info "Main connection authenticated successfully"
 
         if read!(sysnotify_sock, zero(secure_cookie)) != secure_cookie
             close.([server, sysnotify_server, sock, sysnotify_sock])
             error("Electron failed to authenticate with proper security token")
         end
+        @info "Sysnotify connection authenticated successfully"
+
+        notify(handshake_complete_event)
 
         close.([server, sysnotify_server])
+        @info "Server sockets closed, application initialization complete"
 
         # Create application instance
         app = Application(sock, proc, secure_cookie, security, name)
@@ -163,8 +295,15 @@ function Application(;
         return app
 
     catch e
+        notify(main_accept_event)
+        notify(sysnotify_accept_event)
+        notify(handshake_complete_event)
         close.([server, sysnotify_server])
-        rethrow(ApplicationError("Failed to start Electron application: $(e.msg)", nothing))
+        if e isa InterruptException
+            rethrow(e)
+        end
+        error_msg = sprint(showerror, e)
+        rethrow(ApplicationError("Failed to start Electron application: $error_msg", nothing))
     end
 end
 
@@ -203,6 +342,24 @@ end
 
 function default_main_js_path()
     return normpath(joinpath(@__DIR__, "main.js"))
+end
+
+"""
+    get_electron_binary_cmd() -> String
+
+Get the path to the Electron binary executable.
+
+This function provides compatibility with Electron.jl's API and returns
+the path to the electron executable provided by Electron_jll.
+
+# Examples
+```julia
+julia> path = get_electron_binary_cmd()
+"/path/to/electron"
+```
+"""
+function get_electron_binary_cmd()
+    return Electron_jll.electron_path
 end
 
 function validate_security_config(config::SecurityConfig)

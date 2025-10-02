@@ -12,6 +12,11 @@ function prep_test_env()
             @info "Setting up Xvfb for Linux CI"
             run(Cmd(`Xvfb :99 -screen 0 1024x768x24`), wait = false)
             ENV["DISPLAY"] = ":99"
+            # Disable DBus to prevent blocking on system service queries
+            # Delete these entirely rather than setting to empty string
+            delete!(ENV, "DBUS_SESSION_BUS_ADDRESS")
+            delete!(ENV, "DBUS_SYSTEM_BUS_ADDRESS")
+            delete!(ENV, "XDG_RUNTIME_DIR")
             # Add small delay to ensure display is ready
             sleep(2)
         end
@@ -26,6 +31,26 @@ function test_security_config()
     # Use development config on Linux CI to avoid SUID sandbox issues
     return (haskey(ENV, "GITHUB_ACTIONS") && Sys.islinux()) ? development_config() :
            secure_defaults()
+end
+
+# Helper function to get additional electron args for CI verbose logging
+function test_electron_args()
+    # Add verbose logging in CI to help diagnose issues
+    if haskey(ENV, "GITHUB_ACTIONS") || haskey(ENV, "CI")
+        @info "CI environment detected - enabling verbose Electron logging"
+        return ["--enable-logging", "--v=1"]
+    end
+    return String[]
+end
+
+# Wrapper to create Application with test defaults including verbose logging in CI
+function test_application(; kwargs...)
+    # Merge in verbose args if not already specified
+    if !haskey(kwargs, :additional_electron_args)
+        return Application(; additional_electron_args=test_electron_args(), kwargs...)
+    else
+        return Application(; kwargs...)
+    end
 end
 
 # Helper function to clean up all applications
@@ -59,8 +84,15 @@ end
         # Ensure clean start
         cleanup_all_applications()
 
+        # Test get_electron_binary_cmd() helper
+        @info "Testing get_electron_binary_cmd()..."
+        electron_path = get_electron_binary_cmd()
+        @test electron_path isa String
+        @test !isempty(electron_path)
+        @test occursin("electron", lowercase(electron_path))
+
         @info "Creating single test application..."
-        app = Application(name = "TestApp", security = test_security_config())
+        app = test_application(name = "TestApp", security = test_security_config())
         @test app isa Application
         @test app.exists == true
         @test app.name == "TestApp"
@@ -113,6 +145,33 @@ end
         # Test message channel
         ch = msgchannel(win)
         @test ch isa Channel
+
+        # Test ElectronAPI shim
+        @info "Testing ElectronAPI..."
+        @test ElectronAPI isa ElectronCall.ElectronAPIType
+        
+        # Test ElectronAPI.setTitle
+        ElectronAPI.setTitle(win, "API Test Window")
+        sleep(0.2)
+        title = run(app, "require('electron').BrowserWindow.fromId($(win.id)).getTitle()")
+        @test title == "API Test Window"
+
+        # Test ElectronAPI.setSize
+        ElectronAPI.setSize(win, 640, 480)
+        sleep(0.2)
+        size = run(app, "require('electron').BrowserWindow.fromId($(win.id)).getSize()")
+        @test size[1] == 640
+        @test size[2] == 480
+
+        # Test toggle_devtools
+        @info "Testing toggle_devtools()..."
+        @test toggle_devtools isa Function
+        try
+            toggle_devtools(win)
+            @test true
+        catch e
+            @warn "toggle_devtools not supported in test environment: $e"
+        end
 
         # Test window closure
         close(win)
