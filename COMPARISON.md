@@ -2,6 +2,15 @@
 
 This document provides a detailed comparison between ElectronCall.jl (v1.0.0) and the original Electron.jl (v6.0.0), including migration guidance and feature differences.
 
+## Electron Binary Distribution
+
+A key difference between the packages is how they provide the Electron binary:
+
+| Package | Binary Distribution | Update Method | Advantages |
+|---------|---------------------|---------------|------------|
+| **Electron.jl** | Custom artifacts from ElectronBuilder | Manual artifact updates | Custom build process control |
+| **ElectronCall.jl** | Electron_jll (BinaryBuilder/Yggdrasil) | Standard JLL ecosystem | Automatic updates, multi-platform CI tested |
+
 ## Performance Comparison
 
 **Latest Benchmark Results** (September 2025):
