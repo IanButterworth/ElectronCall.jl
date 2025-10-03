@@ -3,7 +3,7 @@ using ElectronCall: secure_defaults, development_config, legacy_compatibility_co
 using ElectronCall: WindowClosedError, SecurityError, CommunicationError, ApplicationError
 using Test
 using URIs
-using JSON3
+using JSON
 
 # Helper function to get appropriate security config for tests
 function test_security_config()
@@ -452,7 +452,7 @@ end
             try
                 dict = Dict("a" => 1, "b" => 2)
                 result = @js win "JSON.stringify(\$dict)"
-                parsed = JSON3.read(result)
+                parsed = JSON.parse(result)
                 @test parsed["a"] == 1
                 @test parsed["b"] == 2
             catch e

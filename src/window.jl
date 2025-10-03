@@ -271,6 +271,6 @@ Base.getproperty(::ElectronAPIType, name::Symbol) = ElectronAPIFunction(name)
 
 function (api::ElectronAPIFunction)(w::Window, args...)
     name = api.name
-    json_args = JSON3.write(collect(args))
+    json_args = JSON.json(collect(args))
     run(w.app, "require('electron').BrowserWindow.fromId($(w.id)).$name(...$json_args)")
 end

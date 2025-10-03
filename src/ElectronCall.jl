@@ -1,6 +1,6 @@
 module ElectronCall
 
-using JSON3, URIs, Sockets, Base64, Electron_jll, UUIDs
+using JSON, URIs, Sockets, Base64, Electron_jll, UUIDs
 
 # Core exports - clean, minimal API inspired by Electron.jl
 export Application, Window, URI, windows, applications, msgchannel, load

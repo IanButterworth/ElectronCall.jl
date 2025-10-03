@@ -264,7 +264,7 @@ function on_message(callback::Function, win::Window; async::Bool = true)
 end
 
 # High-performance request-response function optimized for JavaScript execution
-# Uses manual JSON construction to eliminate JSON3.write() overhead
+# Uses manual JSON construction to eliminate JSON.json() overhead
 function req_response_js(
     app::Application,
     cmd::String,
@@ -278,7 +278,7 @@ function req_response_js(
         connection = app.connection
 
         # Optimization: Manual JSON construction to avoid full serialization overhead
-        # This eliminates the expensive JSON3.write() call seen in profiling
+        # This eliminates the expensive JSON.json() call seen in profiling
         if target == "app"
             # Pre-built template for app commands
             json_cmd = string(
@@ -315,7 +315,7 @@ function req_response_js(
                 throw(CommunicationError("Empty response from Electron process"))
             end
 
-            return JSON3.read(response_line)
+            return JSON.parse(response_line)
         catch e
             if e isa Base.IOError
                 app.exists = false
@@ -333,7 +333,7 @@ function req_response(app::Application, cmd::Dict)
 
     lock(app.comm_lock) do
         connection = app.connection
-        json_cmd = JSON3.write(cmd)
+        json_cmd = JSON.json(cmd)
 
         try
             # Optimization: Use write instead of println to reduce buffer flushes
@@ -345,7 +345,7 @@ function req_response(app::Application, cmd::Dict)
                 throw(CommunicationError("Empty response from Electron process"))
             end
 
-            return JSON3.read(response_line)
+            return JSON.parse(response_line)
         catch e
             if e isa Base.IOError
                 app.exists = false

@@ -298,7 +298,7 @@ function _julia_to_js(value)
     elseif value isa Bool
         return value ? "true" : "false"
     elseif value isa AbstractString
-        return JSON3.write(value)  # Proper string escaping
+        return JSON.json(value)  # Proper string escaping
     elseif value isa Number
         if isfinite(value)
             return string(value)
@@ -311,17 +311,17 @@ function _julia_to_js(value)
         end
     elseif value isa AbstractArray || value isa Tuple
         # Convert to JavaScript array
-        return JSON3.write(collect(value))
+        return JSON.json(collect(value))
     elseif value isa AbstractDict
         # Convert to JavaScript object
-        return JSON3.write(value)
+        return JSON.json(value)
     else
         # Fallback: try JSON serialization
         try
-            return JSON3.write(value)
+            return JSON.json(value)
         catch
             # If JSON fails, convert to string and quote it
-            return JSON3.write(string(value))
+            return JSON.json(string(value))
         end
     end
 end
