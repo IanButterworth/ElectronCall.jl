@@ -13,7 +13,7 @@ Latest Results (September 2025):
 - Competitive performance with enhanced security
 
 Performance Optimizations in ElectronCall.jl:
-- JSON3.jl for 40% faster JSON processing
+- JSON.jl v1.0.0 for fast JSON processing
 - Manual JSON construction for hot paths
 - Optimized I/O with write/flush patterns
 - Fast string escaping for simple cases
