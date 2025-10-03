@@ -4,6 +4,24 @@
 
 const OptDict = Dict{String,Any}
 
+"""
+    get_electron_binary_cmd() -> String
+
+Get the path to the Electron binary executable.
+
+This function provides compatibility with Electron.jl's API and returns
+the path to the electron executable provided by Electron_jll.
+
+# Examples
+```julia
+julia> path = get_electron_binary_cmd()
+"/path/to/electron"
+```
+"""
+function get_electron_binary_cmd()
+    return Electron_jll.electron_path
+end
+
 # Application struct is forward declared in ElectronCall.jl
 # Define the fields and internal constructor here
 function Application(
@@ -90,6 +108,7 @@ function Application(;
     # Validate security configuration
     validate_security_config(security)
 
+    # Get the Electron binary path
     electron_path = get_electron_binary_cmd()
 
     # Generate unique identifiers for named pipes
@@ -106,14 +125,8 @@ function Application(;
     secure_cookie_encoded = base64encode(secure_cookie)
 
     # Build Electron command with security-conscious defaults
-    electron_cmd_args = [
-        electron_path,
-        main_js,
-        main_pipe_name,
-        sysnotify_pipe_name,
-        secure_cookie_encoded,
-        base64encode(JSON3.write(security)),  # Pass security config to main.js
-    ]
+    # Electron flags must come before the main.js file
+    electron_cmd_args = [electron_path]
 
     # Add sandbox control - default is enabled (opposite of original Electron.jl)
     if !security.sandbox
@@ -121,8 +134,17 @@ function Application(;
         @warn "Sandbox disabled - this reduces security. Only disable for development/debugging."
     end
 
-    # Add custom electron arguments
+    # Add custom electron arguments (before main.js)
     append!(electron_cmd_args, additional_electron_args)
+
+    # Add main.js and application arguments
+    append!(electron_cmd_args, [
+        main_js,
+        main_pipe_name,
+        sysnotify_pipe_name,
+        secure_cookie_encoded,
+        base64encode(JSON3.write(security)),  # Pass security config to main.js
+    ])
 
     electron_cmd = Cmd(electron_cmd_args)
 
@@ -163,7 +185,11 @@ function Application(;
 
     catch e
         close.([server, sysnotify_server])
-        rethrow(ApplicationError("Failed to start Electron application: $(e.msg)", nothing))
+        if e isa InterruptException
+            rethrow(e)
+        end
+        error_msg = sprint(showerror, e)
+        rethrow(ApplicationError("Failed to start Electron application: $error_msg", nothing))
     end
 end
 

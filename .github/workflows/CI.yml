@@ -15,7 +15,7 @@ jobs:
       contents: read
       id-token: write
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       matrix:
         julia-version:
@@ -36,10 +36,18 @@ jobs:
 
       - uses: julia-actions/julia-buildpkg@v1
 
+      - name: Setup Xvfb (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+
       - name: Run tests (Linux with D-Bus suppression)
         if: runner.os == 'Linux'
         uses: julia-actions/julia-runtest@v1
         env:
+          DISPLAY: ':99'
           # Suppress D-Bus errors in Linux CI environment
           DBUS_SYSTEM_BUS_ADDRESS: ""
           DBUS_SESSION_BUS_ADDRESS: ""

@@ -185,8 +185,7 @@ Toggle the developer tools for the window. Useful for debugging.
 function toggle_devtools(win::Window)
     isopen(win) || throw(WindowClosedError(win.id, "toggle_devtools"))
 
-    js_code = "require('electron').remote.getCurrentWindow().webContents.toggleDevTools()"
-    run(win, js_code)
+    run(win.app, "require('electron').BrowserWindow.fromId($(win.id)).webContents.toggleDevTools()")
 end
 
 # Helper functions
@@ -235,4 +234,43 @@ function apply_security_defaults!(options::Dict, security_config::SecurityConfig
             ),
         )
     end
+end
+
+# ElectronAPI compatibility shim for Electron.jl parity
+
+"""
+    ElectronAPI
+
+A shim object for calling Electron API functions directly on windows.
+Provides compatibility with Electron.jl's ElectronAPI pattern.
+
+See:
+* <https://electronjs.org/docs/api/browser-window>
+
+# Examples
+```julia
+julia> using ElectronCall
+
+julia> win = Window();
+
+julia> ElectronAPI.setBackgroundColor(win, "#000");
+
+julia> ElectronAPI.show(win);
+```
+"""
+ElectronAPI
+
+struct ElectronAPIType end
+const ElectronAPI = ElectronAPIType()
+
+struct ElectronAPIFunction <: Function
+    name::Symbol
+end
+
+Base.getproperty(::ElectronAPIType, name::Symbol) = ElectronAPIFunction(name)
+
+function (api::ElectronAPIFunction)(w::Window, args...)
+    name = api.name
+    json_args = JSON3.write(collect(args))
+    run(w.app, "require('electron').BrowserWindow.fromId($(w.id)).$name(...$json_args)")
 end

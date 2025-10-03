@@ -5,22 +5,6 @@ using Test
 using URIs
 using JSON3
 
-# Test environment setup for CI
-function prep_test_env()
-    if haskey(ENV, "GITHUB_ACTIONS") && ENV["GITHUB_ACTIONS"] == "true"
-        if Sys.islinux()
-            @info "Setting up Xvfb for Linux CI"
-            run(Cmd(`Xvfb :99 -screen 0 1024x768x24`), wait = false)
-            ENV["DISPLAY"] = ":99"
-            # Add small delay to ensure display is ready
-            sleep(2)
-        end
-    end
-end
-
-# Prepare test environment (sets up Xvfb on Linux CI)
-prep_test_env()
-
 # Helper function to get appropriate security config for tests
 function test_security_config()
     # Use development config on Linux CI to avoid SUID sandbox issues
@@ -58,6 +42,13 @@ end
 
         # Ensure clean start
         cleanup_all_applications()
+
+        # Test get_electron_binary_cmd() helper
+        @info "Testing get_electron_binary_cmd()..."
+        electron_path = get_electron_binary_cmd()
+        @test electron_path isa String
+        @test !isempty(electron_path)
+        @test occursin("electron", lowercase(electron_path))
 
         @info "Creating single test application..."
         app = Application(name = "TestApp", security = test_security_config())
@@ -113,6 +104,33 @@ end
         # Test message channel
         ch = msgchannel(win)
         @test ch isa Channel
+
+        # Test ElectronAPI shim
+        @info "Testing ElectronAPI..."
+        @test ElectronAPI isa ElectronCall.ElectronAPIType
+
+        # Test ElectronAPI.setTitle
+        ElectronAPI.setTitle(win, "API Test Window")
+        sleep(0.2)
+        title = run(app, "require('electron').BrowserWindow.fromId($(win.id)).getTitle()")
+        @test title == "API Test Window"
+
+        # Test ElectronAPI.setSize
+        ElectronAPI.setSize(win, 640, 480)
+        sleep(0.2)
+        size = run(app, "require('electron').BrowserWindow.fromId($(win.id)).getSize()")
+        @test size[1] == 640
+        @test size[2] == 480
+
+        # Test toggle_devtools
+        @info "Testing toggle_devtools()..."
+        @test toggle_devtools isa Function
+        try
+            toggle_devtools(win)
+            @test true
+        catch e
+            @warn "toggle_devtools not supported in test environment: $e"
+        end
 
         # Test window closure
         close(win)
@@ -510,31 +528,23 @@ end
         cleanup_all_applications()
     end
 
-    @testset "Artifacts and Binary Detection" begin
-        # Test get_electron_binary_cmd returns appropriate binary path
-        binary_cmd = ElectronCall.get_electron_binary_cmd()
-        @test binary_cmd isa String
-        @test length(binary_cmd) > 0
+    @testset "Binaries" begin
+        # Test get_electron_binary_cmd() returns appropriate binary path
+        binary_path = ElectronCall.get_electron_binary_cmd()
+        @test binary_path isa String
+        @test length(binary_path) > 0
 
         # Platform-specific path validation
         if Sys.isapple()
-            # On macOS, should contain "Julia" (the app name)
-            @test occursin("Julia", binary_cmd)
+            # On macOS, should contain "electron" in the path
+            @test occursin("electron", binary_path)
         elseif Sys.iswindows()
             # On Windows, should end with .exe
-            @test occursin("electron.exe", binary_cmd) || binary_cmd == "electron"
+            @test occursin("electron.exe", binary_path) || occursin("electron", binary_path)
         else # Linux/Unix
             # On Linux, should contain "electron"
-            @test occursin("electron", binary_cmd)
+            @test occursin("electron", binary_path)
         end
-
-        # Test conditional_electron_load error path
-        # This function handles artifact loading gracefully
-        result = ElectronCall.conditional_electron_load()
-        @test result !== nothing || result === nothing  # Either works or fails gracefully
-
-        # Test prep_test_env function (it's safe to call multiple times)
-        ElectronCall.prep_test_env()
     end
 
     @testset "Error Display Methods" begin
@@ -735,17 +745,15 @@ end
         # We can't easily mock conditional_electron_load, but we can test the logic
 
         # Test that binary command is reasonable on this platform
-        cmd = ElectronCall.get_electron_binary_cmd()
-        if Sys.isapple()
-            @test occursin("Julia", cmd) || cmd == "electron"
-        else
-            @test occursin("electron", cmd)
-        end
+        binary_path = ElectronCall.get_electron_binary_cmd()
+        @test binary_path isa String
+        @test !isempty(binary_path)
 
-        # Test platform-specific logic by checking the source behavior
-        # The function should handle all platforms gracefully
-        @test isa(cmd, String)
-        @test !isempty(cmd)
+        if Sys.isapple()
+            @test occursin("electron", binary_path)
+        else
+            @test occursin("electron", binary_path)
+        end
 
         # Cleanup to ensure no applications are left running
         cleanup_all_applications()

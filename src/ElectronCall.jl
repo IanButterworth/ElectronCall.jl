@@ -1,10 +1,11 @@
 module ElectronCall
 
-using JSON3, URIs, Sockets, Base64, Artifacts, UUIDs
+using JSON3, URIs, Sockets, Base64, Electron_jll, UUIDs
 
 # Core exports - clean, minimal API inspired by Electron.jl
 export Application, Window, URI, windows, applications, msgchannel, load
 export close, isopen, default_application
+export toggle_devtools, ElectronAPI, get_electron_binary_cmd
 
 # Modern async exports
 export @async_app, @js, @window, @electron_function, SecurityConfig
@@ -13,7 +14,6 @@ export @async_app, @js, @window, @electron_function, SecurityConfig
 export ElectronCallError, JSExecutionError, WindowClosedError, SecurityError
 
 # Include core modules in dependency order
-include("artifacts.jl")
 include("security.jl")
 include("errors.jl")
 
@@ -85,7 +85,5 @@ function default_application(security::SecurityConfig = secure_defaults())
     end
     return _global_default_application[]
 end
-
-
 
 end # module ElectronCall
