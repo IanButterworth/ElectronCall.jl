@@ -5,14 +5,9 @@ const net = require('net')
 const os = require('os')
 const readline = require('readline')
 
-console.log('ElectronCall main.js: Script started, initializing...')
-console.log('ElectronCall main.js: Process arguments:', process.argv)
-
 const BrowserWindow = electron.BrowserWindow;
 const app = electron.app;
 const ipcMain = electron.ipcMain;
-
-console.log('ElectronCall main.js: Electron modules loaded successfully')
 
 let sysnotify_connection = null;
 let security_config = null;
@@ -238,8 +233,6 @@ ipcMain.on('msg-for-julia-process', (event, arg) => {
 
 // Application ready handler
 app.on('ready', function () {
-    console.log('ElectronCall main.js: app.ready event fired')
-
     // Determine the index of the main script within process arguments
     const normalizedFilename = path.normalize(__filename);
     let scriptIndex = process.argv.findIndex(arg => {
@@ -283,17 +276,11 @@ app.on('ready', function () {
     }
 
     const secure_cookie = Buffer.from(secureCookieArg, 'base64');
-    console.log('ElectronCall main.js: Parsed secure cookie')
 
     // Parse security configuration if provided
     if (securityConfigArg) {
         try {
             security_config = JSON.parse(Buffer.from(securityConfigArg, 'base64').toString());
-            console.log('ElectronCall: Using security configuration', {
-                contextIsolation: security_config.context_isolation,
-                sandbox: security_config.sandbox,
-                nodeIntegration: security_config.node_integration
-            });
         } catch (error) {
             console.error('ElectronCall: Failed to parse security configuration:', error);
             security_config = null;
@@ -301,10 +288,8 @@ app.on('ready', function () {
     }
 
     // Connect to Julia process
-    console.log('ElectronCall main.js: Attempting to connect to pipes:', mainPipe, sysPipe)
     const connection = secure_connect(mainPipe, secure_cookie);
     sysnotify_connection = secure_connect(sysPipe, secure_cookie);
-    console.log('ElectronCall main.js: Connection attempts initiated')
 
     // Handle sysnotify connection errors silently during cleanup
     sysnotify_connection.on('error', function(error) {

@@ -5,52 +5,11 @@ using Test
 using URIs
 using JSON3
 
-# Test environment setup for CI
-function prep_test_env()
-    if haskey(ENV, "GITHUB_ACTIONS") && ENV["GITHUB_ACTIONS"] == "true"
-        if Sys.islinux()
-            @info "Setting up Xvfb for Linux CI"
-            run(Cmd(`Xvfb :99 -screen 0 1024x768x24`), wait = false)
-            ENV["DISPLAY"] = ":99"
-            # Disable DBus to prevent blocking on system service queries
-            # Delete these entirely rather than setting to empty string
-            delete!(ENV, "DBUS_SESSION_BUS_ADDRESS")
-            delete!(ENV, "DBUS_SYSTEM_BUS_ADDRESS")
-            delete!(ENV, "XDG_RUNTIME_DIR")
-            # Add small delay to ensure display is ready
-            sleep(2)
-        end
-    end
-end
-
-# Prepare test environment (sets up Xvfb on Linux CI)
-prep_test_env()
-
 # Helper function to get appropriate security config for tests
 function test_security_config()
     # Use development config on Linux CI to avoid SUID sandbox issues
     return (haskey(ENV, "GITHUB_ACTIONS") && Sys.islinux()) ? development_config() :
            secure_defaults()
-end
-
-# Helper function to get additional electron args for CI verbose logging
-function test_electron_args()
-    # Add verbose logging in CI to help diagnose issues
-    if haskey(ENV, "GITHUB_ACTIONS") || haskey(ENV, "CI")
-        @info "CI environment detected - enabling verbose Electron logging"
-        return ["--enable-logging", "--v=1"]
-    end
-    return String[]
-end
-
-# Wrapper to create Application with test defaults including verbose logging in CI
-function test_application(; kwargs...)
-    # Merge in verbose args if not already specified
-    if !haskey(kwargs, :additional_electron_args)
-        return Application(; additional_electron_args=test_electron_args(), kwargs...)
-    else
-        return Application(; kwargs...)
-    end
 end
 
 # Helper function to clean up all applications
@@ -92,7 +51,7 @@ end
         @test occursin("electron", lowercase(electron_path))
 
         @info "Creating single test application..."
-        app = test_application(name = "TestApp", security = test_security_config())
+        app = Application(name = "TestApp", security = test_security_config())
         @test app isa Application
         @test app.exists == true
         @test app.name == "TestApp"
@@ -149,7 +108,7 @@ end
         # Test ElectronAPI shim
         @info "Testing ElectronAPI..."
         @test ElectronAPI isa ElectronCall.ElectronAPIType
-        
+
         # Test ElectronAPI.setTitle
         ElectronAPI.setTitle(win, "API Test Window")
         sleep(0.2)
@@ -569,9 +528,9 @@ end
         cleanup_all_applications()
     end
 
-    @testset "Artifacts and Binary Detection" begin
-        # Test Electron_jll.electron_path returns appropriate binary path
-        binary_path = ElectronCall.Electron_jll.electron_path
+    @testset "Binaries" begin
+        # Test get_electron_binary_cmd() returns appropriate binary path
+        binary_path = ElectronCall.get_electron_binary_cmd()
         @test binary_path isa String
         @test length(binary_path) > 0
 
@@ -586,9 +545,6 @@ end
             # On Linux, should contain "electron"
             @test occursin("electron", binary_path)
         end
-
-        # Test prep_test_env function (it's safe to call multiple times)
-        ElectronCall.prep_test_env()
     end
 
     @testset "Error Display Methods" begin
@@ -789,7 +745,7 @@ end
         # We can't easily mock conditional_electron_load, but we can test the logic
 
         # Test that binary command is reasonable on this platform
-        binary_path = ElectronCall.Electron_jll.electron_path
+        binary_path = ElectronCall.get_electron_binary_cmd()
         @test binary_path isa String
         @test !isempty(binary_path)
 

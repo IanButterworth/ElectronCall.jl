@@ -1,9 +1,6 @@
 using Documenter
 using ElectronCall
 
-# Set up display for any example code that might create windows
-ElectronCall.prep_test_env()
-
 makedocs(;
     modules = [ElectronCall],
     authors = "Ian Butterworth <ian.butterworth@gmail.com> and contributors",

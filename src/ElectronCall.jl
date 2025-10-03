@@ -86,19 +86,4 @@ function default_application(security::SecurityConfig = secure_defaults())
     return _global_default_application[]
 end
 
-"""
-    prep_test_env()
-
-Prepare the environment for testing, particularly in CI environments.
-Sets up virtual display on Linux headless systems.
-"""
-function prep_test_env()
-    if haskey(ENV, "GITHUB_ACTIONS") && ENV["GITHUB_ACTIONS"] == "true"
-        if Sys.islinux()
-            run(Cmd(`Xvfb :99 -screen 0 1024x768x24`), wait = false)
-            ENV["DISPLAY"] = ":99"
-        end
-    end
-end
-
 end # module ElectronCall
