@@ -13,16 +13,18 @@ A key difference between the packages is how they provide the Electron binary:
 
 ## Performance Comparison
 
-**Latest Benchmark Results** (September 2025):
+**Latest Benchmark Results** (October 2025, with Electron_jll):
 
-| Metric | Electron.jl | ElectronCall.jl | Winner |
-|--------|-------------|-----------------|---------|
-| **Application Startup** | 161.03 ms | 164.83 ms | ⚠️ Electron.jl (+2.4%) |
-| **Window Creation** | 113.23 ms | 112.76 ms | 🚀 **ElectronCall.jl** (+0.4%) |
-| **JS Execution (Single)** | 1.03 ms | 990.138 μs | 🚀 **ElectronCall.jl** (+3.9%) |
-| **JS Throughput** | 3620 ops/sec | 3445 ops/sec | ⚠️ Electron.jl (+4.8%) |
-| **Cleanup Time** | 20.05 ms | 19.47 ms | 🚀 **ElectronCall.jl** (+2.9%) |
-| **Thread Safety** | ❌ Not supported | ✅ 3.09 ms concurrent exec | 🔒 **ElectronCall.jl exclusive** |
+| Metric | Electron.jl | ElectronCall.jl | Difference |
+|--------|-------------|-----------------|------------|
+| **Application Startup** | 164.19 ms | 176.44 ms | Electron.jl +7.5% |
+| **Window Creation** | 157.05 ms | 133.60 ms | **ElectronCall.jl +14.9%** |
+| **JS Execution (Single)** | 1.26 ms | 1.25 ms | **ElectronCall.jl +0.9%** |
+| **JS Throughput** | 3668 ops/sec | 3501 ops/sec | Electron.jl +4.5% |
+| **Cleanup Time** | 21.93 ms | 21.41 ms | **ElectronCall.jl +2.4%** |
+| **Thread Safety** | Not supported | 3.32 ms concurrent | **ElectronCall.jl only** |
+
+Performance is comparable between packages, with ElectronCall.jl providing additional thread safety features.
 
 ## Feature Comparison
 
@@ -153,22 +155,27 @@ ElectronCall.jl's messaging system is designed with security in mind:
 - **Error Boundaries**: Failed message handlers don't crash the application
 - **Resource Management**: Automatic cleanup when windows are closed
 
-## Why ElectronCall.jl?
+## Key Differences
 
-### Security First
-- **Secure by Default**: Context isolation and sandboxing enabled out of the box
-- **Modern Electron Standards**: Follows current Electron security best practices
-- **Production Ready**: Safe for production deployment without security compromises
+### Security
+- Context isolation and sandboxing enabled by default in ElectronCall.jl
+- Follows current Electron security best practices
+- Use `development_config()` to disable sandbox when needed for debugging
 
-### Better Developer Experience
-- **Enhanced Error Handling**: Detailed error messages with stack traces
-- **Async Support**: Non-blocking message handling with timeout support
-- **CI/CD Ready**: Full test suite with cross-platform CI support
+### Error Handling
+- ElectronCall.jl provides structured error types with stack traces
+- Better error messages for debugging
+- Automatic window state validation
 
-### Drop-in Compatibility
-- **Minimal Migration**: Most Electron.jl code works unchanged
-- **Familiar API**: Same function names and patterns
-- **Gradual Adoption**: Can migrate features incrementally
+### Async Support
+- ElectronCall.jl includes timeout support for message operations
+- Non-blocking message handlers available
+- Thread-safe concurrent execution
+
+### API Compatibility
+- Most Electron.jl code works unchanged in ElectronCall.jl
+- Same core function names and patterns
+- Additional optional parameters for enhanced features
 
 ## Breaking Changes
 
