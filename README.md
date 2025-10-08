@@ -1,6 +1,6 @@
 # ElectronCall.jl
 
-[![Project Status: Work in progress](http://www.repostatus.org/badges/latest/wip.svg)](http://www.repostatus.org/#active)
+[![Project Status: Work in progress](http://www.repostatus.org/badges/latest/active.svg)](http://www.repostatus.org/#active)
 [![codecov](https://codecov.io/gh/IanButterworth/ElectronCall.jl/graph/badge.svg)](https://codecov.io/gh/IanButterworth/ElectronCall.jl)
 
 A Julia package for creating desktop applications with Electron. Built with secure defaults, comprehensive error handling, and full compatibility with existing Electron.jl patterns.
