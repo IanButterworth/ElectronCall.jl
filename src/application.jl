@@ -208,6 +208,11 @@ function Base.close(app::Application)
     app.exists = false
     close(app.connection)
 
+    # Closing the IPC pipe is the graceful exit request. But a wedged headless
+    # Electron (CI/xvfb, no dbus) may ignore it and keep running, orphaning its
+    # process + libuv handle so Julia itself can't exit. Make sure it's gone.
+    app.proc isa Base.Process && process_running(app.proc) && kill(app.proc)
+
     # Remove from global applications list
     app_index = findfirst(a -> a === app, _global_applications)
     if app_index !== nothing
