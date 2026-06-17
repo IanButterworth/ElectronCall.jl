@@ -35,7 +35,7 @@ export TestContext, open_window, close, set_window_size
 export eval_js, dom_count, dom_exists, dom_rect, dom_text, dom_html, dom_attr
 export dom_click, dom_value, dom_query, dom_query_all
 export type_into, press_key, focus_element, blur_element
-export wait_for, wait_for_dom, wait_for_gone
+export wait_for, wait_for_dom, wait_for_gone, click_until
 export screenshot, emit_screenshot
 export install_error_sink, js_errors, clear_js_errors
 # Animated cursor + smooth frame-pump recording (see recording.jl)
@@ -431,6 +431,40 @@ Wait until no elements matching `selector` exist in the DOM.
 """
 wait_for_gone(ctx::TestContext, sel::AbstractString; timeout::Float64 = 5.0) =
     wait_for(ctx, "document.querySelector($(JSON.json(sel))) === null"; timeout = timeout)
+
+"""
+    click_until(ctx, selector, predicate_js; timeout=10.0, interval=0.3) -> Bool
+
+Click the first *visible* element matching `selector` (offsetParent set),
+repeatedly, until the JS expression `predicate_js` yields `true` (returns
+`true`) or `timeout` elapses (returns `false`).
+
+For clicks whose effect is wired asynchronously: a framework that attaches the
+handler only after the element mounts means a single synthetic `click()` can
+race ahead of the handler and be silently dropped, so a plain
+`click` + `wait_for` hangs forever. `click_until` re-clicks until the awaited
+state appears. The clicked control must be idempotent w.r.t. that state (e.g. a
+button that sets a flag), since it may be clicked more than once.
+"""
+function click_until(ctx::TestContext, selector::AbstractString, predicate_js::AbstractString;
+                     timeout::Float64 = 10.0, interval::Float64 = 0.3)
+    deadline = time() + timeout
+    while time() < deadline
+        try
+            eval_js(ctx, """(() => {
+                const el = [...document.querySelectorAll($(JSON.json(selector)))]
+                    .find(e => e && e.offsetParent !== null);
+                if (el) el.click();
+                return el !== null;
+            })()""")
+            eval_js(ctx, "(() => { return ($predicate_js); })()") === true && return true
+        catch e
+            e isa ElectronCallError || rethrow()
+        end
+        sleep(interval)
+    end
+    return false
+end
 
 # ── Screenshots ────────────────────────────────────────────────────────────
 
