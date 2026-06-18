@@ -123,17 +123,17 @@ function open_window(url::AbstractString;
 
     app = Application(; name = "TestApp", security = security,
                        additional_electron_args = args)
-    win_options = Dict{String,Any}(
-        "show" => show,
-        "width" => width,
-        "height" => height,
-        "webPreferences" => Dict{String,Any}(
-            "backgroundThrottling" => false,
-            "paintWhenInitiallyHidden" => true,
-        ),
-    )
-    # Window auto-detects HTML vs URL/path
-    win = Window(app, url; options = win_options)
+    # Pass BrowserWindow options as KWARGS — `Window` merges kwargs into the
+    # top-level options dict. An `options = Dict(...)` kwarg would instead nest
+    # the dict under an `"options"` key, so `show` never reaches BrowserWindow
+    # and Electron's `show:true` default pops a visible window (the bug that made
+    # "headless" test windows flash + steal focus).
+    # Window auto-detects HTML vs URL/path.
+    win = Window(app, url;
+                 show = show, width = width, height = height,
+                 webPreferences = Dict{String,Any}(
+                     "backgroundThrottling" => false,
+                     "paintWhenInitiallyHidden" => true))
     return TestContext(app, win, false)
 end
 
@@ -151,16 +151,13 @@ function open_window(; show::Bool = false,
 
     app = Application(; name = "TestApp", security = security,
                        additional_electron_args = args)
-    win_options = Dict{String,Any}(
-        "show" => show,
-        "width" => width,
-        "height" => height,
-        "webPreferences" => Dict{String,Any}(
-            "backgroundThrottling" => false,
-            "paintWhenInitiallyHidden" => true,
-        ),
-    )
-    win = Window(app; options = win_options)
+    # Options as KWARGS (top-level), NOT `options = Dict(...)` which would nest
+    # them and drop `show` → Electron's `show:true` default pops a window.
+    win = Window(app;
+                 show = show, width = width, height = height,
+                 webPreferences = Dict{String,Any}(
+                     "backgroundThrottling" => false,
+                     "paintWhenInitiallyHidden" => true))
     return TestContext(app, win, false)
 end
 
