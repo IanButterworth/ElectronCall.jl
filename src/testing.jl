@@ -105,8 +105,25 @@ function open_window(f::Function; kwargs...)
     end
 end
 
+# `offscreen = true` switches the window into Electron's offscreen-rendering
+# (OSR) mode. A plain hidden (`show = false`) window has no on-screen surface, so
+# Chromium's compositor produces frames lazily (~1.5 fps measured) — which starves
+# `requestAnimationFrame`, even though timers and the main thread run at full
+# speed. OSR drives its OWN BeginFrame source at a fixed rate (60 fps default),
+# independent of visibility, so rAF-paced code (scroll momentum, follow-mode
+# restore, animations) runs at real-browser cadence. Use it for tests that
+# exercise rAF timing; leave it off (default) for screenshot-based tests, where
+# OSR's separate paint path is an unneeded variable.
+function _test_web_prefs(offscreen::Bool)
+    wp = Dict{String,Any}("backgroundThrottling" => false,
+                          "paintWhenInitiallyHidden" => true)
+    offscreen && (wp["offscreen"] = true)
+    return wp
+end
+
 function open_window(url::AbstractString;
                      show::Bool = false,
+                     offscreen::Bool = false,
                      width::Int = 1280,
                      height::Int = 800,
                      devtools::Bool = false,
@@ -131,13 +148,12 @@ function open_window(url::AbstractString;
     # Window auto-detects HTML vs URL/path.
     win = Window(app, url;
                  show = show, width = width, height = height,
-                 webPreferences = Dict{String,Any}(
-                     "backgroundThrottling" => false,
-                     "paintWhenInitiallyHidden" => true))
+                 webPreferences = _test_web_prefs(offscreen))
     return TestContext(app, win, false)
 end
 
 function open_window(; show::Bool = false,
+                      offscreen::Bool = false,
                       width::Int = 1280,
                       height::Int = 800,
                       devtools::Bool = false,
@@ -155,9 +171,7 @@ function open_window(; show::Bool = false,
     # them and drop `show` → Electron's `show:true` default pops a window.
     win = Window(app;
                  show = show, width = width, height = height,
-                 webPreferences = Dict{String,Any}(
-                     "backgroundThrottling" => false,
-                     "paintWhenInitiallyHidden" => true))
+                 webPreferences = _test_web_prefs(offscreen))
     return TestContext(app, win, false)
 end
 
