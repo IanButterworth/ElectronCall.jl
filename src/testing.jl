@@ -105,15 +105,15 @@ function open_window(f::Function; kwargs...)
     end
 end
 
-# `offscreen = true` switches the window into Electron's offscreen-rendering
-# (OSR) mode. A plain hidden (`show = false`) window has no on-screen surface, so
+# `offscreen` controls Electron's offscreen-rendering (OSR) mode, and it is ON BY
+# DEFAULT. A plain hidden (`show = false`) window has no on-screen surface, so
 # Chromium's compositor produces frames lazily (~1.5 fps measured) — which starves
 # `requestAnimationFrame`, even though timers and the main thread run at full
 # speed. OSR drives its OWN BeginFrame source at a fixed rate (60 fps default),
 # independent of visibility, so rAF-paced code (scroll momentum, follow-mode
-# restore, animations) runs at real-browser cadence. Use it for tests that
-# exercise rAF timing; leave it off (default) for screenshot-based tests, where
-# OSR's separate paint path is an unneeded variable.
+# restore, animations) runs at real-browser cadence. Since this Testing module
+# exists to drive headless UI tests, faithful rAF timing is the correct default;
+# pass `offscreen = false` to opt a window back onto the plain hidden-window path.
 function _test_web_prefs(offscreen::Bool)
     wp = Dict{String,Any}("backgroundThrottling" => false,
                           "paintWhenInitiallyHidden" => true)
@@ -123,7 +123,7 @@ end
 
 function open_window(url::AbstractString;
                      show::Bool = false,
-                     offscreen::Bool = false,
+                     offscreen::Bool = true,
                      width::Int = 1280,
                      height::Int = 800,
                      devtools::Bool = false,
@@ -153,7 +153,7 @@ function open_window(url::AbstractString;
 end
 
 function open_window(; show::Bool = false,
-                      offscreen::Bool = false,
+                      offscreen::Bool = true,
                       width::Int = 1280,
                       height::Int = 800,
                       devtools::Bool = false,
