@@ -72,35 +72,5 @@
   };
   fc.setPos = (x,y) => { fc.x=x; fc.y=y; place(); };
 
-  // Drag a native range input to a target fraction (0..1) over `dur` seconds,
-  // updating its value + firing `input` each frame so bound plots animate live.
-  // Synthetic pointer events can't move a native range (untrusted), so we set
-  // the value directly while gliding the cursor along the track for the look.
-  fc.steerRange = (sel, toFrac, dur) => new Promise((resolve) => {
-    const el = (typeof sel === 'number') ? document.querySelectorAll('input[type=range]')[sel]
-             : (typeof sel === 'string') ? document.querySelector(sel) : sel;
-    if (!el) return resolve();
-    const r = el.getBoundingClientRect();
-    const min = parseFloat(el.min||'0'), max = parseFloat(el.max||'100');
-    let step = parseFloat(el.step||'1'); if (!step) step = (max-min)/100;
-    const setVal = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
-    const fromFrac = (parseFloat(el.value)-min)/(max-min);
-    const trackX = (f) => r.left + 8 + f*(r.width-16);
-    fc.x = trackX(fromFrac); fc.y = r.top + r.height/2; place();
-    fc.press(0);
-    const t0 = performance.now();
-    const stepFn = (now) => {
-      let p = Math.min(1, (now-t0)/(dur*1000));
-      const f = fromFrac + (toFrac-fromFrac)*ease(p);
-      let v = min + f*(max-min); v = Math.round(v/step)*step;
-      setVal.call(el, String(v));
-      el.dispatchEvent(new Event('input', {bubbles:true}));
-      fc.x = trackX(f); fc.y = r.top + r.height/2; place();
-      if (p < 1) requestAnimationFrame(stepFn);
-      else { el.dispatchEvent(new Event('change', {bubbles:true})); fc.release(false); resolve(); }
-    };
-    requestAnimationFrame(stepFn);
-  });
-
   return 'installed';
 })()

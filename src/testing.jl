@@ -42,9 +42,11 @@ export install_error_sink, js_errors, clear_js_errors
 export install_cursor, set_cursor, cursor_pos
 export Sel, JS, Lazy, resolve_point
 export move_to, mouse_down, mouse_up, click, drag, type_text, press_key, steer_slider, select_option
+export wheel, send_input
 export InteractionEvent, MouseTo, MouseDown, MouseUp, Click, RightClick, Drag, Steer, SelectOption
 export TypeText, KeyPress, Wait, Focus, Do, play
 export start_recording, stop_recording, record_video
+export pause_recording, resume_recording, without_recording
 export relative_pos
 export @js_str
 

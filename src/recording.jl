@@ -231,17 +231,173 @@ function drag(ctx::TestContext, from, to; grab = nothing, move = nothing, settle
     return nothing
 end
 
-"""
-    steer_slider(ctx, target, to_fraction; duration = 1.0)
+# ── Trusted OS-level input ──────────────────────────────────────────────────
+# Native controls (range sliders) and native scrolling ignore UNTRUSTED
+# synthetic events — a `new PointerEvent(...)` can drive app-defined handlers
+# (that's how `drag` works on Bonito widgets) but never the browser's own
+# built-in behaviors. `webContents.sendInputEvent` injects input at the
+# Chromium level, indistinguishable from the OS: the range control drags
+# itself, the page under the cursor really scrolls. Recording helpers that
+# target native behavior MUST use these, never set `.value` / `scrollTop`
+# programmatically — a walkthrough that fakes its inputs is a lie.
 
-Drag a native range slider to `to_fraction` (0..1 of its range) over `duration`
-seconds, gliding the cursor along the track and firing `input` each frame so
-bound plots animate live. `target` is the 0-based index among the page's
-`input[type=range]` elements, or a CSS selector. Blocks until done.
+# Inject one trusted input event. `event` is the JS object literal for
+# webContents.sendInputEvent (page CSS coordinates).
+function send_input(ctx::TestContext, event::AbstractString)
+    run(ctx.app, """
+        const w = electron.BrowserWindow.fromId($(ctx.window.id));
+        w.webContents.sendInputEvent($event);
+        null
+    """)
+    return nothing
+end
+
 """
-function steer_slider(ctx::TestContext, target, to_fraction::Real; duration::Real = 1.0)
+    wheel(ctx, dy; steps = 6, step_sleep = 0.06)
+
+Wheel-scroll at the cursor's current position: `dy > 0` scrolls down.
+
+Dispatches a `WheelEvent` on the element under the cursor and then performs
+the event's DEFAULT ACTION (scrolling the nearest scrollable ancestor by the
+same delta) when no handler prevented it. That two-step dance exists because
+Electron cannot deliver native wheel scrolling to a hidden (`show = false`)
+window: `sendInputEvent({type: 'mouseWheel'})` reaches the DOM but Chromium's
+compositor never executes the scroll. The observable result is identical to a
+user's wheel — same event at the same position with the same delta, app wheel
+handlers (e.g. a chat's follow-mode disengagement) fire, and the same
+container moves by the same amount.
+"""
+function wheel(ctx::TestContext, dy::Real; steps::Int = 6, step_sleep::Real = 0.06)
+    x, y = cursor_pos(ctx)
+    per = dy / steps
+    for _ in 1:steps
+        eval_js(ctx, """
+            (() => {
+                const x = $(Float64(x)), y = $(Float64(y)), dy = $(Float64(per));
+                const el = document.elementFromPoint(x, y) || document.body;
+                const ev = new WheelEvent('wheel', {clientX: x, clientY: y,
+                    deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true});
+                const proceed = el.dispatchEvent(ev);
+                if (!proceed) return false;               // a handler prevented default
+                // Default action: scroll the nearest scrollable ancestor.
+                let n = el;
+                while (n && n !== document.documentElement) {
+                    const s = getComputedStyle(n);
+                    const scrollable = /auto|scroll|overlay/.test(s.overflowY) &&
+                                       n.scrollHeight > n.clientHeight + 1;
+                    if (scrollable) { n.scrollBy({top: dy, behavior: 'auto'}); return true; }
+                    n = n.parentElement;
+                }
+                window.scrollBy({top: dy, behavior: 'auto'});
+                return true;
+            })()
+        """)
+        sleep(step_sleep)
+    end
+    return nothing
+end
+
+"""
+    real_click(ctx, target = nothing; duration = nothing, settle = 0.1)
+
+Like [`click`](@ref), but the press/release are TRUSTED input events
+(`sendInputEvent`), preceded by a trusted `mouseMove` to the same point. Use
+it for elements gated on real pointer state — e.g. hover-revealed controls
+(`opacity/pointer-events` flipped by a `:hover` rule): synthetic moves never
+set CSS `:hover`, so a synthetic click hit-tests straight through such an
+element to whatever is underneath.
+"""
+function real_click(ctx::TestContext, target = nothing; duration = nothing, settle::Real = 0.1)
+    target !== nothing && move_to(ctx, target; duration = duration)
+    x, y = cursor_pos(ctx)
+    xi, yi = round(Int, x), round(Int, y)
+    send_input(ctx, "{type: 'mouseMove', x: $xi, y: $yi}")   # real hover
+    sleep(0.08)
+    send_input(ctx, "{type: 'mouseDown', x: $xi, y: $yi, button: 'left', clickCount: 1}")
+    sleep(settle)
+    send_input(ctx, "{type: 'mouseUp', x: $xi, y: $yi, button: 'left', clickCount: 1}")
+    return nothing
+end
+
+"""
+    steer_slider(ctx, target, to_fraction; duration = 1.0, steps = 24)
+
+Drag a native range slider to `to_fraction` (0..1 of its range) EXCLUSIVELY
+via trusted mouse events: the cursor moves to the thumb, a real `mouseDown`
+grabs it, real `mouseMove`s (left button held) glide it along the track, and
+`mouseUp` releases — the native control updates itself and fires its own
+`input`/`change`, exactly as for a human drag. `target` is the 0-based index
+among the page's `input[type=range]` elements, or a CSS selector. The element
+must be VISIBLE (scrolled on screen): trusted input lands at viewport
+coordinates, there is nothing to grab off screen. Blocks until done.
+"""
+function steer_slider(ctx::TestContext, target, to_fraction::Real;
+                      duration::Real = 1.0, steps::Int = 24)
     sel = target isa Integer ? string(target) : JSON.json(String(target))
-    eval_js(ctx, "window.__fc.steerRange($sel, $(Float64(to_fraction)), $(Float64(duration)))")
+    info = eval_js(ctx, """
+        (() => {
+            const el = (typeof $sel === 'number')
+                ? document.querySelectorAll('input[type=range]')[$sel]
+                : document.querySelector($sel);
+            if (!el || el.offsetParent === null) return null;
+            const r = el.getBoundingClientRect();
+            if (r.bottom < 0 || r.top > window.innerHeight) return null;
+            const min = parseFloat(el.min || '0'), max = parseFloat(el.max || '100');
+            const frac = (parseFloat(el.value) - min) / (max - min);
+            return [r.left, r.top + r.height / 2, r.width, frac];
+        })()
+    """)
+    info === nothing &&
+        error("steer_slider: no VISIBLE input[type=range] for $sel — scroll it on screen first")
+    left, cy, width, from = Float64(info[1]), Float64(info[2]), Float64(info[3]), Float64(info[4])
+    # The thumb center: native range thumbs travel between half-thumb insets.
+    # (Approximate for styled sliders — the closed-loop correction below is
+    # what actually lands the value.)
+    track(f) = left + 8 + f * (width - 16)
+    frac(ctx) = Float64(eval_js(ctx, """
+        (() => {
+            const el = (typeof $sel === 'number')
+                ? document.querySelectorAll('input[type=range]')[$sel]
+                : document.querySelector($sel);
+            const min = parseFloat(el.min || '0'), max = parseFloat(el.max || '100');
+            return (parseFloat(el.value) - min) / (max - min);
+        })()
+    """))
+    mouse_move_held(x) = begin
+        send_input(ctx, """{type: 'mouseMove', x: $(round(Int, x)),
+            y: $(round(Int, cy)), modifiers: ['leftButtonDown']}""")
+        # Keep the SVG overlay cursor glued to the (real) drag.
+        eval_js(ctx, "window.__fc.setPos($(x), $(cy))")
+    end
+    move_to(ctx, (track(from), cy))                      # cursor to the thumb
+    send_input(ctx, """{type: 'mouseDown', x: $(round(Int, track(from))),
+        y: $(round(Int, cy)), button: 'left', clickCount: 1}""")
+    x = track(from)
+    for i in 1:steps                                     # the visible glide
+        f = from + (Float64(to_fraction) - from) * i / steps
+        x = track(f)
+        mouse_move_held(x)
+        sleep(duration / steps)
+    end
+    # Closed-loop landing: the inset guess above is off for padded/styled
+    # sliders, so nudge (button still held) until the control itself reports
+    # the target fraction. The px→fraction gain is estimated from the last
+    # nudge (secant step) — geometry-independent, converges in a few moves.
+    x_prev, f_prev = track(from), from
+    for _ in 1:10
+        f_now = frac(ctx)
+        err = Float64(to_fraction) - f_now
+        abs(err) < 0.01 && break
+        gain = (abs(x - x_prev) > 1 && f_now != f_prev) ?
+               (f_now - f_prev) / (x - x_prev) : 1 / (width - 16)
+        gain <= 0 && (gain = 1 / (width - 16))
+        x_prev, f_prev = x, f_now
+        x = clamp(x + err / gain, left, left + width)
+        mouse_move_held(x)
+        sleep(0.06)
+    end
+    send_input(ctx, """{type: 'mouseUp', x: $(round(Int, x)),
+        y: $(round(Int, cy)), button: 'left', clickCount: 1}""")
     return nothing
 end
 
@@ -530,10 +686,55 @@ function stop_recording(ctx::TestContext)
 end
 
 """
+    pause_recording(ctx) -> String
+
+Pause the active recording: stop feeding frames to `ffmpeg` so the paused span
+is EXCISED from the output — the finished video jumps straight from the last
+pre-pause frame to the first post-resume frame (not a freeze, not filler). Use
+it to keep long/dead actions off camera: a package precompile, a slow agent
+turn, a `wait_for`, a `sleep`. No-op if the window isn't recording. Pair with
+[`resume_recording`](@ref) or use [`without_recording`](@ref).
+"""
+pause_recording(ctx::TestContext) = run(ctx.app, "globalThis.__pauseRec($(ctx.window.id))")
+
+"""
+    resume_recording(ctx) -> String
+
+Resume a recording paused with [`pause_recording`](@ref).
+"""
+resume_recording(ctx::TestContext) = run(ctx.app, "globalThis.__resumeRec($(ctx.window.id))")
+
+"""
+    without_recording(f, ctx)
+
+Run `f()` with the recording paused, resuming afterward (even if `f` throws).
+Wrap the parts of a `record_video` block that shouldn't appear on camera — long
+waits, an app build, retry loops — and they're cut out of the final video with
+no frozen or filler stretch.
+
+    record_video(ctx, "out.mp4") do
+        steer(...)                       # filmed
+        without_recording(ctx) do
+            wait_for(server, "app built", ...; timeout = 240)   # NOT filmed
+        end
+        steer(...)                       # filmed — continues seamlessly
+    end
+"""
+function without_recording(f, ctx::TestContext)
+    pause_recording(ctx)
+    try
+        return f()
+    finally
+        resume_recording(ctx)
+    end
+end
+
+"""
     record_video(f, ctx, path; fps = 30, crf = 18) -> String
 
 Run `f()` while recording the window to `path`. Stops and finalizes even if
-`f` throws. Returns `path`.
+`f` throws. Returns `path`. Wrap dead time inside `f` with
+[`without_recording`](@ref) to keep it out of the video.
 
     record_video(ctx, "out.mp4") do
         play(ctx, [MouseTo((400, 300)), Click(), Wait(1)])
