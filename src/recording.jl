@@ -285,7 +285,20 @@ function wheel(ctx::TestContext, dy::Real; steps::Int = 6, step_sleep::Real = 0.
                     const s = getComputedStyle(n);
                     const scrollable = /auto|scroll|overlay/.test(s.overflowY) &&
                                        n.scrollHeight > n.clientHeight + 1;
-                    if (scrollable) { n.scrollBy({top: dy, behavior: 'auto'}); return true; }
+                    if (scrollable) {
+                        // CHAIN like a real browser: a scrollable element that
+                        // can't move any further in this direction passes the
+                        // gesture to its parent. Stopping at the nearest
+                        // scrollable ancestor regardless made any wheel landing
+                        // on an inner box (a code preview at its end, a nested
+                        // list) silently do nothing, which reads in a test as
+                        // "the page won't scroll" — a harness artifact easily
+                        // mistaken for a product bug.
+                        const maxTop = n.scrollHeight - n.clientHeight;
+                        const stuck = (dy < 0 && n.scrollTop <= 0) ||
+                                      (dy > 0 && n.scrollTop >= maxTop - 1);
+                        if (!stuck) { n.scrollBy({top: dy, behavior: 'auto'}); return true; }
+                    }
                     n = n.parentElement;
                 }
                 window.scrollBy({top: dy, behavior: 'auto'});
