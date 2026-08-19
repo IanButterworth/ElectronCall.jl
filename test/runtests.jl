@@ -708,6 +708,43 @@ end
         close(app)
     end
 
+    @testset "A failed load must not desync the command stream" begin
+        # `connection` is a strict request/response stream: one command written,
+        # one line read back. `did-fail-load` used to be a plain `.on` handler
+        # that wrote an `{error: …}` line onto it EVERY time a load failed —
+        # unprompted, for the whole life of the window. That line gets read as
+        # the reply to whatever command is in flight; it has no "status" key, so
+        # the caller dies with "Invalid response format from Electron", and from
+        # then on the stream is off by one and every request quietly receives the
+        # PREVIOUS request's answer. It stays broken for the rest of the session.
+        #
+        # Aborted loads are ordinary (a swapped iframe src, a cancelled
+        # navigation), which is why this showed up as unrelated assertions
+        # failing against values belonging to some other query.
+        app = Application(name = "DesyncTestApp", security = development_config())
+        win = Window(app)
+        try
+            @test run(win, "1 + 1") == 2
+            # Port 9 is on Chromium's blocked list, so this fails immediately and
+            # deterministically with ERR_UNSAFE_PORT — no network needed.
+            run(win, """(() => {
+                const f = document.createElement('iframe');
+                f.src = 'http://127.0.0.1:9/nope';
+                document.body.appendChild(f);
+                return true;
+            })()""")
+            sleep(3)
+            # Distinguishable answers: an off-by-one stream returns the previous
+            # one, which `== i * 100` catches on every single call.
+            for i in 1:5
+                @test run(win, "$(i) * 100") == i * 100
+            end
+        finally
+            close(win)
+            close(app)
+        end
+    end
+
     @testset "Additional Error Coverage" begin
         # Test CommunicationError display
         comm_err = CommunicationError("Connection failed", nothing)

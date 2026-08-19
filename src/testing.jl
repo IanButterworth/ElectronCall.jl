@@ -575,7 +575,8 @@ function install_error_sink(ctx::TestContext)
                                 filename: e.filename, lineno: e.lineno}));
         window.addEventListener('unhandledrejection', e =>
             window.__errs.push({type: 'unhandledrejection',
-                                message: String(e.reason && e.reason.message || e.reason)}));
+                                message: String(e.reason && e.reason.message || e.reason),
+                                stack: String((e.reason && e.reason.stack) || '')}));
     """)
     ctx.error_sink_installed = true
     return nothing
@@ -585,8 +586,11 @@ end
     js_errors(ctx) -> Vector
 
 Return the list of JavaScript errors captured by the error sink. Each entry is
-a Dict with keys `type`, `message`, and optionally `filename`/`lineno`.
-Returns an empty vector if no error sink is installed or no errors occurred.
+a Dict with keys `type`, `message`, and optionally `filename`/`lineno` (thrown
+errors) or `stack` (rejections — a bare rejection message like "Cannot read
+properties of null" names no file at all, so the stack is the only way to find
+which library threw). Returns an empty vector if no error sink is installed or
+no errors occurred.
 """
 function js_errors(ctx::TestContext)
     ctx.error_sink_installed || return Any[]
